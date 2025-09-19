@@ -1,0 +1,1453 @@
+                    <select name="ats_who_can_vote">
+                        <option value="subscriber" <?php selected(get_option('ats_who_can_vote'), 'subscriber'); ?>>
+                            <?php _e('Subscriber and above', 'advanced-threads'); ?>
+                        </option>
+                        <option value="contributor" <?php selected(get_option('ats_who_can_vote'), 'contributor'); ?>>
+                            <?php _e('Contributor and above', 'advanced-threads'); ?>
+                        </option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Require approval for new threads', 'advanced-threads'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="ats_require_approval" value="1" 
+                               <?php checked(get_option('ats_require_approval', 0)); ?>>
+                        <?php _e('All new threads must be approved by moderators', 'advanced-threads'); ?>
+                    </label>
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
+    
+    private function render_content_settings() {
+        ?>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><?php _e('Maximum content length', 'advanced-threads'); ?></th>
+                <td>
+                    <input type="number" name="ats_max_content_length" 
+                           value="<?php echo esc_attr(get_option('ats_max_content_length', 10000)); ?>" 
+                           min="100" max="50000">
+                    <p class="description"><?php _e('Maximum characters allowed in thread content', 'advanced-threads'); ?></p>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Enable rich text editor', 'advanced-threads'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="ats_enable_rich_editor" value="1" 
+                               <?php checked(get_option('ats_enable_rich_editor', 1)); ?>>
+                        <?php _e('Use rich text editor for creating threads and replies', 'advanced-threads'); ?>
+                    </label>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Enable image uploads', 'advanced-threads'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="ats_enable_image_uploads" value="1" 
+                               <?php checked(get_option('ats_enable_image_uploads', 1)); ?>>
+                        <?php _e('Allow users to upload images', 'advanced-threads'); ?>
+                    </label>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Maximum image size', 'advanced-threads'); ?></th>
+                <td>
+                    <input type="number" name="ats_max_image_size" 
+                           value="<?php echo esc_attr(get_option('ats_max_image_size', 2048)); ?>" 
+                           min="512" max="10240">
+                    <span><?php _e('KB', 'advanced-threads'); ?></span>
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
+    
+    private function render_reputation_settings() {
+        ?>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><?php _e('Points for creating thread', 'advanced-threads'); ?></th>
+                <td>
+                    <input type="number" name="ats_points_new_thread" 
+                           value="<?php echo esc_attr(get_option('ats_points_new_thread', 10)); ?>" 
+                           min="0" max="100">
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Points for posting reply', 'advanced-threads'); ?></th>
+                <td>
+                    <input type="number" name="ats_points_new_reply" 
+                           value="<?php echo esc_attr(get_option('ats_points_new_reply', 5)); ?>" 
+                           min="0" max="50">
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Points for receiving upvote', 'advanced-threads'); ?></th>
+                <td>
+                    <input type="number" name="ats_points_upvote_received" 
+                           value="<?php echo esc_attr(get_option('ats_points_upvote_received', 2)); ?>" 
+                           min="0" max="20">
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Points for receiving downvote', 'advanced-threads'); ?></th>
+                <td>
+                    <input type="number" name="ats_points_downvote_received" 
+                           value="<?php echo esc_attr(get_option('ats_points_downvote_received', -1)); ?>" 
+                           min="-20" max="0">
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
+    
+    private function render_notification_settings() {
+        ?>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><?php _e('Email notifications', 'advanced-threads'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="ats_email_notifications" value="1" 
+                               <?php checked(get_option('ats_email_notifications', 1)); ?>>
+                        <?php _e('Send email notifications to users', 'advanced-threads'); ?>
+                    </label>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Notify on new replies', 'advanced-threads'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="ats_notify_new_reply" value="1" 
+                               <?php checked(get_option('ats_notify_new_reply', 1)); ?>>
+                        <?php _e('Notify thread authors when someone replies', 'advanced-threads'); ?>
+                    </label>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Notify on upvotes', 'advanced-threads'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="ats_notify_thread_upvote" value="1" 
+                               <?php checked(get_option('ats_notify_thread_upvote', 1)); ?>>
+                        <?php _e('Notify users when their content gets upvoted', 'advanced-threads'); ?>
+                    </label>
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
+    
+    // Helper methods for dashboard stats and content
+    
+    private function get_dashboard_stats() {
+        global $wpdb;
+        
+        $threads_table = $wpdb->prefix . 'ats_threads';
+        $replies_table = $wpdb->prefix . 'ats_replies';
+        $votes_table = $wpdb->prefix . 'ats_votes';
+        $profiles_table = $wpdb->prefix . 'ats_user_profiles';
+        
+        $stats = array();
+        
+        // Total counts
+        $stats['total_threads'] = $wpdb->get_var("SELECT COUNT(*) FROM $threads_table WHERE status = 'published'");
+        $stats['total_replies'] = $wpdb->get_var("SELECT COUNT(*) FROM $replies_table WHERE status = 'published'");
+        $stats['total_votes'] = $wpdb->get_var("SELECT COUNT(*) FROM $votes_table");
+        $stats['total_users'] = $wpdb->get_var("SELECT COUNT(*) FROM $profiles_table");
+        
+        // Today's counts
+        $stats['threads_today'] = $wpdb->get_var("SELECT COUNT(*) FROM $threads_table WHERE DATE(created_at) = CURDATE()");
+        $stats['replies_today'] = $wpdb->get_var("SELECT COUNT(*) FROM $replies_table WHERE DATE(created_at) = CURDATE()");
+        
+        // Pending moderation
+        $stats['pending_moderation'] = $wpdb->get_var("SELECT COUNT(*) FROM $threads_table WHERE status = 'pending'");
+        
+        return $stats;
+    }
+    
+    private function display_recent_activity() {
+        global $wpdb;
+        
+        $threads_table = $wpdb->prefix . 'ats_threads';
+        $replies_table = $wpdb->prefix . 'ats_replies';
+        
+        $activities = $wpdb->get_results("
+            SELECT 'thread' as type, id, title as content, author_id, created_at 
+            FROM $threads_table 
+            WHERE status = 'published' 
+            UNION ALL
+            SELECT 'reply' as type, id, SUBSTRING(content, 1, 100) as content, author_id, created_at 
+            FROM $replies_table 
+            WHERE status = 'published'
+            ORDER BY created_at DESC 
+            LIMIT 10
+        ");
+        
+        if (empty($activities)) {
+            echo '<p>' . __('No recent activity', 'advanced-threads') . '</p>';
+            return;
+        }
+        
+        echo '<ul class="activity-list">';
+        foreach ($activities as $activity) {
+            $user = get_user_by('ID', $activity->author_id);
+            $user_name = $user ? $user->display_name : __('Unknown User', 'advanced-threads');
+            
+            echo '<li class="activity-item">';
+            echo '<strong>' . esc_html($user_name) . '</strong> ';
+            
+            if ($activity->type === 'thread') {
+                printf(__('created thread "%s"', 'advanced-threads'), esc_html($activity->content));
+            } else {
+                printf(__('posted a reply: "%s..."', 'advanced-threads'), esc_html(substr($activity->content, 0, 50)));
+            }
+            
+            echo ' <span class="activity-time">' . ats_time_ago($activity->created_at) . '</span>';
+            echo '</li>';
+        }
+        echo '</ul>';
+    }
+    
+    private function display_popular_threads() {
+        $threads = $this->thread_manager->get_popular_threads(5, 'week');
+        
+        if (empty($threads)) {
+            echo '<p>' . __('No popular threads this week', 'advanced-threads') . '</p>';
+            return;
+        }
+        
+        echo '<ul class="popular-threads-list">';
+        foreach ($threads as $thread) {
+            echo '<li>';
+            echo '<a href="' . get_permalink($thread->post_id) . '" target="_blank">';
+            echo esc_html($thread->title);
+            echo '</a>';
+            echo ' <span class="thread-stats">(' . $thread->reply_count . ' replies, ' . $thread->upvotes . ' upvotes)</span>';
+            echo '</li>';
+        }
+        echo '</ul>';
+    }
+    
+    private function display_top_users() {
+        $users = $this->user_manager->get_leaderboard('reputation', 5, 'all');
+        
+        if (empty($users)) {
+            echo '<p>' . __('No users found', 'advanced-threads') . '</p>';
+            return;
+        }
+        
+        echo '<ul class="top-users-list">';
+        foreach ($users as $user) {
+            echo '<li>';
+            echo '<strong>' . esc_html($user->display_name) . '</strong>';
+            echo ' <span class="user-reputation">(' . number_format($user->reputation) . ' points)</span>';
+            echo '</li>';
+        }
+        echo '</ul>';
+    }
+    
+    private function get_pending_content_count() {
+        global $wpdb;
+        
+        $threads_table = $wpdb->prefix . 'ats_threads';
+        $replies_table = $wpdb->prefix . 'ats_replies';
+        
+        $pending_threads = $wpdb->get_var("SELECT COUNT(*) FROM $threads_table WHERE status = 'pending'");
+        $pending_replies = $wpdb->get_var("SELECT COUNT(*) FROM $replies_table WHERE status = 'pending'");
+        
+        return intval($pending_threads) + intval($pending_replies);
+    }
+    
+    private function get_pending_reports_count() {
+        global $wpdb;
+        
+        $reports_table = $wpdb->prefix . 'ats_reports';
+        return $wpdb->get_var("SELECT COUNT(*) FROM $reports_table WHERE status = 'pending'");
+    }
+    
+    private function render_pending_content() {
+        global $wpdb;
+        
+        $threads_table = $wpdb->prefix . 'ats_threads';
+        $replies_table = $wpdb->prefix . 'ats_replies';
+        
+        // Get pending threads
+        $pending_threads = $wpdb->get_results("
+            SELECT t.*, u.display_name as author_name
+            FROM $threads_table t
+            LEFT JOIN {$wpdb->users} u ON t.author_id = u.ID
+            WHERE t.status = 'pending'
+            ORDER BY t.created_at DESC
+        ");
+        
+        // Get pending replies
+        $pending_replies = $wpdb->get_results("
+            SELECT r.*, u.display_name as author_name, t.title as thread_title
+            FROM $replies_table r
+            LEFT JOIN {$wpdb->users} u ON r.author_id = u.ID
+            LEFT JOIN $threads_table t ON r.thread_id = t.id
+            WHERE r.status = 'pending'
+            ORDER BY r.created_at DESC
+        ");
+        
+        ?>
+        <div class="pending-content">
+            <?php if (!empty($pending_threads)): ?>
+                <h3><?php _e('Pending Threads', 'advanced-threads'); ?></h3>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th><?php _e('Title', 'advanced-threads'); ?></th>
+                            <th><?php _e('Author', 'advanced-threads'); ?></th>
+                            <th><?php _e('Created', 'advanced-threads'); ?></th>
+                            <th><?php _e('Actions', 'advanced-threads'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($pending_threads as $thread): ?>
+                            <tr>
+                                <td>
+                                    <strong><?php echo esc_html($thread->title); ?></strong>
+                                    <div class="thread-excerpt">
+                                        <?php echo esc_html(ats_get_excerpt($thread->content, 100)); ?>
+                                    </div>
+                                </td>
+                                <td><?php echo esc_html($thread->author_name); ?></td>
+                                <td><?php echo ats_time_ago($thread->created_at); ?></td>
+                                <td>
+                                    <button class="button button-primary approve-thread" 
+                                            data-id="<?php echo $thread->id; ?>" data-type="thread">
+                                        <?php _e('Approve', 'advanced-threads'); ?>
+                                    </button>
+                                    <button class="button reject-thread" 
+                                            data-id="<?php echo $thread->id; ?>" data-type="thread">
+                                        <?php _e('Reject', 'advanced-threads'); ?>
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+            
+            <?php if (!empty($pending_replies)): ?>
+                <h3><?php _e('Pending Replies', 'advanced-threads'); ?></h3>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th><?php _e('Content', 'advanced-threads'); ?></th>
+                            <th><?php _e('Thread', 'advanced-threads'); ?></th>
+                            <th><?php _e('Author', 'advanced-threads'); ?></th>
+                            <th><?php _e('Created', 'advanced-threads'); ?></th>
+                            <th><?php _e('Actions', 'advanced-threads'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($pending_replies as $reply): ?>
+                            <tr>
+                                <td><?php echo esc_html(ats_get_excerpt($reply->content, 100)); ?></td>
+                                <td><?php echo esc_html($reply->thread_title); ?></td>
+                                <td><?php echo esc_html($reply->author_name); ?></td>
+                                <td><?php echo ats_time_ago($reply->created_at); ?></td>
+                                <td>
+                                    <button class="button button-primary approve-content" 
+                                            data-id="<?php echo $reply->id; ?>" data-type="reply">
+                                        <?php _e('Approve', 'advanced-threads'); ?>
+                                    </button>
+                                    <button class="button reject-content" 
+                                            data-id="<?php echo $reply->id; ?>" data-type="reply">
+                                        <?php _e('Reject', 'advanced-threads'); ?>
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endif; ?>
+            
+            <?php if (empty($pending_threads) && empty($pending_replies)): ?>
+                <p><?php _e('No pending content to moderate.', 'advanced-threads'); ?></p>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+    
+    private function render_reports() {
+        global $wpdb;
+        
+        $reports_table = $wpdb->prefix . 'ats_reports';
+        
+        $reports = $wpdb->get_results("
+            SELECT r.*, u.display_name as reporter_name
+            FROM $reports_table r
+            LEFT JOIN {$wpdb->users} u ON r.reporter_id = u.ID
+            WHERE r.status = 'pending'
+            ORDER BY r.created_at DESC
+        ");
+        
+        ?>
+        <div class="reports-list">
+            <?php if (!empty($reports)): ?>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th><?php _e('Content', 'advanced-threads'); ?></th>
+                            <th><?php _e('Reason', 'advanced-threads'); ?></th>
+                            <th><?php _e('Reporter', 'advanced-threads'); ?></th>
+                            <th><?php _e('Date', 'advanced-threads'); ?></th>
+                            <th><?php _e('Actions', 'advanced-threads'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($reports as $report): ?>
+                            <tr>
+                                <td>
+                                    <strong><?php echo esc_html(ucfirst($report->reported_type)); ?> ID: <?php echo $report->reported_id; ?></strong>
+                                    <?php if ($report->description): ?>
+                                        <div class="report-description">
+                                            <?php echo esc_html($report->description); ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo esc_html($report->reason); ?></td>
+                                <td><?php echo esc_html($report->reporter_name); ?></td>
+                                <td><?php echo ats_time_ago($report->created_at); ?></td>
+                                <td>
+                                    <button class="button button-primary resolve-report" 
+                                            data-id="<?php echo $report->id; ?>">
+                                        <?php _e('Resolve', 'advanced-threads'); ?>
+                                    </button>
+                                    <button class="button dismiss-report" 
+                                            data-id="<?php echo $report->id; ?>">
+                                        <?php _e('Dismiss', 'advanced-threads'); ?>
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else: ?>
+                <p><?php _e('No pending reports.', 'advanced-threads'); ?></p>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+    
+    private function render_user_management() {
+        // Top users with moderation actions
+        $users = $this->user_manager->get_leaderboard('reputation', 20, 'all');
+        
+        ?>
+        <div class="user-management">
+            <h3><?php _e('User Management', 'advanced-threads'); ?></h3>
+            
+            <?php if (!empty($users)): ?>
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th><?php _e('User', 'advanced-threads'); ?></th>
+                            <th><?php _e('Reputation', 'advanced-threads'); ?></th>
+                            <th><?php _e('Threads', 'advanced-threads'); ?></th>
+                            <th><?php _e('Replies', 'advanced-threads'); ?></th>
+                            <th><?php _e('Last Seen', 'advanced-threads'); ?></th>
+                            <th><?php _e('Actions', 'advanced-threads'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($users as $user): ?>
+                            <tr>
+                                <td>
+                                    <strong><?php echo esc_html($user->display_name); ?></strong>
+                                    <?php if ($user->badge): ?>
+                                        <span class="user-badge"><?php echo esc_html($user->badge); ?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo number_format($user->reputation); ?></td>
+                                <td><?php echo number_format($user->threads_count); ?></td>
+                                <td><?php echo number_format($user->replies_count); ?></td>
+                                <td><?php echo $user->last_seen ? ats_time_ago($user->last_seen) : __('Never', 'advanced-threads'); ?></td>
+                                <td>
+                                    <button class="button view-user-profile" 
+                                            data-user-id="<?php echo $user->user_id; ?>">
+                                        <?php _e('View Profile', 'advanced-threads'); ?>
+                                    </button>
+                                    <button class="button reset-user-stats" 
+                                            data-user-id="<?php echo $user->user_id; ?>">
+                                        <?php _e('Reset Stats', 'advanced-threads'); ?>
+                                    </button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php else: ?>
+                <p><?php _e('No users found.', 'advanced-threads'); ?></p>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+    
+    private function display_categories_table() {
+        $categories = ats_get_categories();
+        
+        if (empty($categories)) {
+            echo '<p>' . __('No categories found.', 'advanced-threads') . '</p>';
+            return;
+        }
+        
+        ?>
+        <table class="wp-list-table widefat fixed striped">
+            <thead>
+                <tr>
+                    <th><?php _e('Name', 'advanced-threads'); ?></th>
+                    <th><?php _e('Slug', 'advanced-threads'); ?></th>
+                    <th><?php _e('Threads', 'advanced-threads'); ?></th>
+                    <th><?php _e('Color', 'advanced-threads'); ?></th>
+                    <th><?php _e('Actions', 'advanced-threads'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($categories as $category): ?>
+                    <tr>
+                        <td>
+                            <strong><?php echo esc_html($category->name); ?></strong>
+                            <?php if ($category->description): ?>
+                                <div class="category-description">
+                                    <?php echo esc_html($category->description); ?>
+                                </div>
+                            <?php endif; ?>
+                        </td>
+                        <td><?php echo esc_html($category->slug); ?></td>
+                        <td><?php echo number_format($category->thread_count); ?></td>
+                        <td>
+                            <span class="color-indicator" 
+                                  style="background-color: <?php echo esc_attr($category->color); ?>"></span>
+                            <?php echo esc_html($category->color); ?>
+                        </td>
+                        <td>
+                            <button class="button edit-category" 
+                                    data-id="<?php echo $category->id; ?>">
+                                <?php _e('Edit', 'advanced-threads'); ?>
+                            </button>
+                            <button class="button delete-category" 
+                                    data-id="<?php echo $category->id; ?>">
+                                <?php _e('Delete', 'advanced-threads'); ?>
+                            </button>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
+    }
+    
+    private function display_system_info() {
+        global $wpdb;
+        
+        $info = array(
+            'Plugin Version' => ATS_VERSION,
+            'WordPress Version' => get_bloginfo('version'),
+            'PHP Version' => PHP_VERSION,
+            'MySQL Version' => $wpdb->db_version(),
+            'Active Theme' => wp_get_theme()->get('Name'),
+            'Memory Limit' => ini_get('memory_limit'),
+            'Upload Max Size' => ini_get('upload_max_filesize'),
+            'Time Limit' => ini_get('max_execution_time') . 's',
+        );
+        
+        ?>
+        <table class="widefat">
+            <thead>
+                <tr>
+                    <th><?php _e('Setting', 'advanced-threads'); ?></th>
+                    <th><?php _e('Value', 'advanced-threads'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($info as $key => $value): ?>
+                    <tr>
+                        <td><strong><?php echo esc_html($key); ?></strong></td>
+                        <td><?php echo esc_html($value); ?></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php
+    }
+    
+    // AJAX handlers and other methods
+    
+    public function handle_admin_ajax() {
+        if (!wp_verify_nonce($_POST['nonce'], 'ats_admin_nonce')) {
+            wp_die(__('Security check failed', 'advanced-threads'));
+        }
+        
+        $action = sanitize_text_field($_POST['admin_action']);
+        
+        switch ($action) {
+            case 'approve_content':
+                $this->approve_content($_POST['content_id'], $_POST['content_type']);
+                break;
+            case 'reject_content':
+                $this->reject_content($_POST['content_id'], $_POST['content_type']);
+                break;
+            case 'resolve_report':
+                $this->resolve_report($_POST['report_id']);
+                break;
+            case 'dismiss_report':
+                $this->dismiss_report($_POST['report_id']);
+                break;
+        }
+        
+        wp_die();
+    }
+    
+    private function approve_content($content_id, $content_type) {
+        global $wpdb;
+        
+        if ($content_type === 'thread') {
+            $table = $wpdb->prefix . 'ats_threads';
+        } else {
+            $table = $wpdb->prefix . 'ats_replies';
+        }
+        
+        $result = $wpdb->update(
+            $table,
+            array('status' => 'published'),
+            array('id' => intval($content_id)),
+            array('%s'),
+            array('%d')
+        );
+        
+        if ($result) {
+            wp_send_json_success(__('Content approved successfully', 'advanced-threads'));
+        } else {
+            wp_send_json_error(__('Failed to approve content', 'advanced-threads'));
+        }
+    }
+    
+    private function save_settings() {
+        if (!wp_verify_nonce($_POST['ats_settings_nonce'], 'ats_save_settings')) {
+            return;
+        }
+        
+        $settings = array(
+            'ats_threads_per_page',
+            'ats_replies_per_page',
+            'ats_enable_voting',
+            'ats_enable_following',
+            'ats_enable_notifications',
+            'ats_who_can_create_threads',
+            'ats_who_can_reply',
+            'ats_who_can_vote',
+            'ats_require_approval',
+            'ats_max_content_length',
+            'ats_enable_rich_editor',
+            'ats_enable_image_uploads',
+            'ats_max_image_size',
+            'ats_points_new_thread',
+            'ats_points_new_reply',
+            'ats_points_upvote_received',
+            'ats_points_downvote_received',
+            'ats_email_notifications',
+            'ats_notify_new_reply',
+            'ats_notify_thread_upvote'
+        );
+        
+        foreach ($settings as $setting) {
+            if (isset($_POST[$setting])) {
+                update_option($setting, sanitize_text_field($_POST[$setting]));
+            } else {
+                // Handle checkboxes that aren't checked
+                if (strpos($setting, 'enable_') !== false || 
+                    strpos($setting, 'require_') !== false || 
+                    strpos($setting, 'notify_') !== false) {
+                    update_option($setting, 0);
+                }
+            }
+        }
+    }
+    
+    private function needs_database_update() {
+        $current_version = get_option('ats_db_version');
+        return version_compare($current_version, ATS_VERSION, '<');
+    }
+    
+    private function maybe_show_update_notice() {
+        if ($this->needs_database_update()) {
+            add_action('admin_notices', function() {
+                ?>
+                <div class="notice notice-warning">
+                    <p>
+                        <?php _e('Advanced Threads System database needs to be updated.', 'advanced-threads'); ?>
+                        <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ats-tools&action=update_db'), 'ats_update_db'); ?>" 
+                           class="button button-primary">
+                            <?        // Ajax handlers
+        add_action('wp_ajax_ats_admin_action', array($this, 'handle_admin_ajax'));
+        add_action('wp_ajax_ats_moderate_content', array($this, 'handle_moderation'));
+        add_action('wp_ajax_ats_get_stats', array($this, 'handle_get_stats'));
+        
+        // Custom columns
+        add_filter('manage_users_columns', array($this, 'add_user_columns'));
+        add_action('manage_users_custom_column', array($this, 'display_user_columns'), 10, 3);
+        
+        // Bulk actions
+        add_filter('bulk_actions-users', array($this, 'add_user_bulk_actions'));
+        add_filter('handle_bulk_actions-users', array($this, 'handle_user_bulk_actions'), 10, 3);
+    }
+    
+    /**
+     * Add admin menu pages
+     */
+    public function add_admin_menu() {
+        // Main menu page
+        add_menu_page(
+            __('Advanced Threads', 'advanced-threads'),
+            __('Threads', 'advanced-threads'),
+            'manage_options',
+            'ats-dashboard',
+            array($this, 'dashboard_page'),
+            'dashicons-format-chat',
+            25
+        );
+        
+        // Dashboard submenu
+        add_submenu_page(
+            'ats-dashboard',
+            __('Dashboard', 'advanced-threads'),
+            __('Dashboard', 'advanced-threads'),
+            'manage_options',
+            'ats-dashboard',
+            array($this, 'dashboard_page')
+        );
+        
+        // Settings submenu
+        add_submenu_page(
+            'ats-dashboard',
+            __('Settings', 'advanced-threads'),
+            __('Settings', 'advanced-threads'),
+            'manage_options',
+            'ats-settings',
+            array($this, 'settings_page')
+        );
+        
+        // Moderation submenu
+        add_submenu_page(
+            'ats-dashboard',
+            __('Moderation', 'advanced-threads'),
+            __('Moderation', 'advanced-threads'),
+            'moderate_comments',
+            'ats-moderation',
+            array($this, 'moderation_page')
+        );
+        
+        // Categories submenu
+        add_submenu_page(
+            'ats-dashboard',
+            __('Categories', 'advanced-threads'),
+            __('Categories', 'advanced-threads'),
+            'manage_options',
+            'ats-categories',
+            array($this, 'categories_page')
+        );
+        
+        // Statistics submenu
+        add_submenu_page(
+            'ats-dashboard',
+            __('Statistics', 'advanced-threads'),
+            __('Statistics', 'advanced-threads'),
+            'manage_options',
+            'ats-statistics',
+            array($this, 'statistics_page')
+        );
+        
+        // Tools submenu
+        add_submenu_page(
+            'ats-dashboard',
+            __('Tools', 'advanced-threads'),
+            __('Tools', 'advanced-threads'),
+            'manage_options',
+            'ats-tools',
+            array($this, 'tools_page')
+        );
+    }
+    
+    /**
+     * Initialize admin settings
+     */
+    public function admin_init() {
+        // Register settings
+        $this->register_settings();
+        
+        // Check for database updates
+        $this->maybe_show_update_notice();
+    }
+    
+    /**
+     * Register plugin settings
+     */
+    private function register_settings() {
+        // General settings
+        register_setting('ats_general_settings', 'ats_threads_per_page');
+        register_setting('ats_general_settings', 'ats_replies_per_page');
+        register_setting('ats_general_settings', 'ats_enable_voting');
+        register_setting('ats_general_settings', 'ats_enable_following');
+        register_setting('ats_general_settings', 'ats_enable_notifications');
+        
+        // Permission settings
+        register_setting('ats_permission_settings', 'ats_who_can_create_threads');
+        register_setting('ats_permission_settings', 'ats_who_can_reply');
+        register_setting('ats_permission_settings', 'ats_who_can_vote');
+        register_setting('ats_permission_settings', 'ats_require_approval');
+        
+        // Content settings
+        register_setting('ats_content_settings', 'ats_max_content_length');
+        register_setting('ats_content_settings', 'ats_enable_rich_editor');
+        register_setting('ats_content_settings', 'ats_enable_image_uploads');
+        register_setting('ats_content_settings', 'ats_max_image_size');
+        
+        // Reputation settings
+        register_setting('ats_reputation_settings', 'ats_points_new_thread');
+        register_setting('ats_reputation_settings', 'ats_points_new_reply');
+        register_setting('ats_reputation_settings', 'ats_points_upvote_received');
+        register_setting('ats_reputation_settings', 'ats_points_downvote_received');
+    }
+    
+    /**
+     * Dashboard page
+     */
+    public function dashboard_page() {
+        // Get statistics
+        $stats = $this->get_dashboard_stats();
+        
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Advanced Threads Dashboard', 'advanced-threads'); ?></h1>
+            
+            <div class="ats-dashboard">
+                <div class="dashboard-widgets">
+                    <div class="dashboard-widget">
+                        <h3><?php _e('Overview', 'advanced-threads'); ?></h3>
+                        <div class="widget-content">
+                            <div class="stats-grid">
+                                <div class="stat-item">
+                                    <div class="stat-number"><?php echo number_format($stats['total_threads']); ?></div>
+                                    <div class="stat-label"><?php _e('Total Threads', 'advanced-threads'); ?></div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-number"><?php echo number_format($stats['total_replies']); ?></div>
+                                    <div class="stat-label"><?php _e('Total Replies', 'advanced-threads'); ?></div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-number"><?php echo number_format($stats['total_users']); ?></div>
+                                    <div class="stat-label"><?php _e('Active Users', 'advanced-threads'); ?></div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-number"><?php echo number_format($stats['total_votes']); ?></div>
+                                    <div class="stat-label"><?php _e('Total Votes', 'advanced-threads'); ?></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-widget">
+                        <h3><?php _e('Recent Activity', 'advanced-threads'); ?></h3>
+                        <div class="widget-content">
+                            <?php $this->display_recent_activity(); ?>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-widget">
+                        <h3><?php _e('Popular Threads', 'advanced-threads'); ?></h3>
+                        <div class="widget-content">
+                            <?php $this->display_popular_threads(); ?>
+                        </div>
+                    </div>
+                    
+                    <div class="dashboard-widget">
+                        <h3><?php _e('Top Users', 'advanced-threads'); ?></h3>
+                        <div class="widget-content">
+                            <?php $this->display_top_users(); ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Settings page
+     */
+    public function settings_page() {
+        if (isset($_POST['submit'])) {
+            $this->save_settings();
+            echo '<div class="notice notice-success"><p>' . __('Settings saved successfully!', 'advanced-threads') . '</p></div>';
+        }
+        
+        $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'general';
+        
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Advanced Threads Settings', 'advanced-threads'); ?></h1>
+            
+            <nav class="nav-tab-wrapper">
+                <a href="?page=ats-settings&tab=general" 
+                   class="nav-tab <?php echo $active_tab === 'general' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e('General', 'advanced-threads'); ?>
+                </a>
+                <a href="?page=ats-settings&tab=permissions" 
+                   class="nav-tab <?php echo $active_tab === 'permissions' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e('Permissions', 'advanced-threads'); ?>
+                </a>
+                <a href="?page=ats-settings&tab=content" 
+                   class="nav-tab <?php echo $active_tab === 'content' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e('Content', 'advanced-threads'); ?>
+                </a>
+                <a href="?page=ats-settings&tab=reputation" 
+                   class="nav-tab <?php echo $active_tab === 'reputation' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e('Reputation', 'advanced-threads'); ?>
+                </a>
+                <a href="?page=ats-settings&tab=notifications" 
+                   class="nav-tab <?php echo $active_tab === 'notifications' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e('Notifications', 'advanced-threads'); ?>
+                </a>
+            </nav>
+            
+            <form method="post" action="">
+                <?php wp_nonce_field('ats_save_settings', 'ats_settings_nonce'); ?>
+                
+                <div class="tab-content">
+                    <?php
+                    switch ($active_tab) {
+                        case 'general':
+                            $this->render_general_settings();
+                            break;
+                        case 'permissions':
+                            $this->render_permission_settings();
+                            break;
+                        case 'content':
+                            $this->render_content_settings();
+                            break;
+                        case 'reputation':
+                            $this->render_reputation_settings();
+                            break;
+                        case 'notifications':
+                            $this->render_notification_settings();
+                            break;
+                    }
+                    ?>
+                </div>
+                
+                <?php submit_button(); ?>
+            </form>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Moderation page
+     */
+    public function moderation_page() {
+        $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'pending';
+        
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Content Moderation', 'advanced-threads'); ?></h1>
+            
+            <nav class="nav-tab-wrapper">
+                <a href="?page=ats-moderation&tab=pending" 
+                   class="nav-tab <?php echo $active_tab === 'pending' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e('Pending Content', 'advanced-threads'); ?>
+                    <?php
+                    $pending_count = $this->get_pending_content_count();
+                    if ($pending_count > 0): ?>
+                        <span class="count">(<?php echo $pending_count; ?>)</span>
+                    <?php endif; ?>
+                </a>
+                <a href="?page=ats-moderation&tab=reports" 
+                   class="nav-tab <?php echo $active_tab === 'reports' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e('Reports', 'advanced-threads'); ?>
+                    <?php
+                    $reports_count = $this->get_pending_reports_count();
+                    if ($reports_count > 0): ?>
+                        <span class="count">(<?php echo $reports_count; ?>)</span>
+                    <?php endif; ?>
+                </a>
+                <a href="?page=ats-moderation&tab=users" 
+                   class="nav-tab <?php echo $active_tab === 'users' ? 'nav-tab-active' : ''; ?>">
+                    <?php _e('User Management', 'advanced-threads'); ?>
+                </a>
+            </nav>
+            
+            <div class="tab-content">
+                <?php
+                switch ($active_tab) {
+                    case 'pending':
+                        $this->render_pending_content();
+                        break;
+                    case 'reports':
+                        $this->render_reports();
+                        break;
+                    case 'users':
+                        $this->render_user_management();
+                        break;
+                }
+                ?>
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Categories page
+     */
+    public function categories_page() {
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Thread Categories', 'advanced-threads'); ?></h1>
+            
+            <div class="ats-categories-manager">
+                <div class="category-form">
+                    <h2><?php _e('Add New Category', 'advanced-threads'); ?></h2>
+                    <form method="post" id="add-category-form">
+                        <?php wp_nonce_field('ats_add_category', 'category_nonce'); ?>
+                        
+                        <table class="form-table">
+                            <tr>
+                                <th scope="row">
+                                    <label for="category_name"><?php _e('Name', 'advanced-threads'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="text" name="category_name" id="category_name" required>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">
+                                    <label for="category_slug"><?php _e('Slug', 'advanced-threads'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="text" name="category_slug" id="category_slug">
+                                    <p class="description"><?php _e('Leave blank to auto-generate from name', 'advanced-threads'); ?></p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">
+                                    <label for="category_description"><?php _e('Description', 'advanced-threads'); ?></label>
+                                </th>
+                                <td>
+                                    <textarea name="category_description" id="category_description" rows="3"></textarea>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">
+                                    <label for="category_color"><?php _e('Color', 'advanced-threads'); ?></label>
+                                </th>
+                                <td>
+                                    <input type="color" name="category_color" id="category_color" value="#1976d2">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">
+                                    <label for="category_icon"><?php _e('Icon', 'advanced-threads'); ?></label>
+                                </th>
+                                <td>
+                                    <select name="category_icon" id="category_icon">
+                                        <option value=""><?php _e('No icon', 'advanced-threads'); ?></option>
+                                        <option value="chat">Chat</option>
+                                        <option value="help-circle">Help</option>
+                                        <option value="megaphone">Announcement</option>
+                                        <option value="lightbulb">Ideas</option>
+                                        <option value="code">Code</option>
+                                        <option value="users">Community</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        </table>
+                        
+                        <?php submit_button(__('Add Category', 'advanced-threads'), 'primary', 'add_category'); ?>
+                    </form>
+                </div>
+                
+                <div class="categories-list">
+                    <h2><?php _e('Existing Categories', 'advanced-threads'); ?></h2>
+                    <?php $this->display_categories_table(); ?>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Statistics page
+     */
+    public function statistics_page() {
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Statistics & Analytics', 'advanced-threads'); ?></h1>
+            
+            <div class="ats-statistics">
+                <div class="stats-overview">
+                    <h2><?php _e('Overview', 'advanced-threads'); ?></h2>
+                    <?php $this->display_statistics_overview(); ?>
+                </div>
+                
+                <div class="stats-charts">
+                    <h2><?php _e('Activity Charts', 'advanced-threads'); ?></h2>
+                    <div class="chart-container">
+                        <canvas id="activity-chart" width="400" height="200"></canvas>
+                    </div>
+                </div>
+                
+                <div class="stats-tables">
+                    <h2><?php _e('Detailed Statistics', 'advanced-threads'); ?></h2>
+                    <?php $this->display_detailed_stats(); ?>
+                </div>
+            </div>
+        </div>
+        
+        <script>
+        jQuery(document).ready(function($) {
+            // Initialize statistics charts
+            atsInitStatisticsCharts();
+        });
+        </script>
+        <?php
+    }
+    
+    /**
+     * Tools page
+     */
+    public function tools_page() {
+        if (isset($_POST['action'])) {
+            $this->handle_tools_action($_POST['action']);
+        }
+        
+        ?>
+        <div class="wrap">
+            <h1><?php _e('Tools & Maintenance', 'advanced-threads'); ?></h1>
+            
+            <div class="ats-tools">
+                <div class="tool-section">
+                    <h2><?php _e('Database Maintenance', 'advanced-threads'); ?></h2>
+                    <p><?php _e('Use these tools to maintain and optimize your threads database.', 'advanced-threads'); ?></p>
+                    
+                    <form method="post">
+                        <?php wp_nonce_field('ats_tools', 'tools_nonce'); ?>
+                        
+                        <div class="tool-item">
+                            <h3><?php _e('Recalculate Statistics', 'advanced-threads'); ?></h3>
+                            <p><?php _e('Recalculate all user statistics and thread counts.', 'advanced-threads'); ?></p>
+                            <button type="submit" name="action" value="recalculate_stats" class="button">
+                                <?php _e('Recalculate Now', 'advanced-threads'); ?>
+                            </button>
+                        </div>
+                        
+                        <div class="tool-item">
+                            <h3><?php _e('Clean Old Data', 'advanced-threads'); ?></h3>
+                            <p><?php _e('Remove old thread views and notifications (older than 60 days).', 'advanced-threads'); ?></p>
+                            <button type="submit" name="action" value="clean_old_data" class="button">
+                                <?php _e('Clean Now', 'advanced-threads'); ?>
+                            </button>
+                        </div>
+                        
+                        <div class="tool-item">
+                            <h3><?php _e('Reset Votes', 'advanced-threads'); ?></h3>
+                            <p><?php _e('Reset all vote counts and recalculate from scratch.', 'advanced-threads'); ?></p>
+                            <button type="submit" name="action" value="reset_votes" class="button button-secondary" 
+                                    onclick="return confirm('<?php _e('Are you sure? This cannot be undone.', 'advanced-threads'); ?>')">
+                                <?php _e('Reset Votes', 'advanced-threads'); ?>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                
+                <div class="tool-section">
+                    <h2><?php _e('Import/Export', 'advanced-threads'); ?></h2>
+                    <p><?php _e('Import or export threads data.', 'advanced-threads'); ?></p>
+                    
+                    <div class="tool-item">
+                        <h3><?php _e('Export Threads', 'advanced-threads'); ?></h3>
+                        <p><?php _e('Export all threads to CSV format.', 'advanced-threads'); ?></p>
+                        <a href="<?php echo wp_nonce_url(admin_url('admin-ajax.php?action=ats_export_threads'), 'ats_export'); ?>" 
+                           class="button">
+                            <?php _e('Export CSV', 'advanced-threads'); ?>
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="tool-section">
+                    <h2><?php _e('System Information', 'advanced-threads'); ?></h2>
+                    <?php $this->display_system_info(); ?>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Add dashboard widgets
+     */
+    public function add_dashboard_widgets() {
+        wp_add_dashboard_widget(
+            'ats_dashboard_widget',
+            __('Advanced Threads Overview', 'advanced-threads'),
+            array($this, 'dashboard_widget_content')
+        );
+    }
+    
+    /**
+     * Dashboard widget content
+     */
+    public function dashboard_widget_content() {
+        $stats = $this->get_dashboard_stats();
+        
+        ?>
+        <div class="ats-dashboard-widget">
+            <div class="widget-stats">
+                <div class="stat-item">
+                    <strong><?php echo number_format($stats['threads_today']); ?></strong>
+                    <span><?php _e('Threads Today', 'advanced-threads'); ?></span>
+                </div>
+                <div class="stat-item">
+                    <strong><?php echo number_format($stats['replies_today']); ?></strong>
+                    <span><?php _e('Replies Today', 'advanced-threads'); ?></span>
+                </div>
+                <div class="stat-item">
+                    <strong><?php echo number_format($stats['pending_moderation']); ?></strong>
+                    <span><?php _e('Pending Moderation', 'advanced-threads'); ?></span>
+                </div>
+            </div>
+            
+            <div class="widget-actions">
+                <a href="<?php echo admin_url('admin.php?page=ats-dashboard'); ?>" class="button">
+                    <?php _e('View Dashboard', 'advanced-threads'); ?>
+                </a>
+                <a href="<?php echo admin_url('admin.php?page=ats-moderation'); ?>" class="button">
+                    <?php _e('Moderation', 'advanced-threads'); ?>
+                </a>
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Enqueue admin assets
+     */
+    public function enqueue_admin_assets($hook) {
+        // Only load on ATS admin pages
+        if (strpos($hook, 'ats-') === false && $hook !== 'index.php') {
+            return;
+        }
+        
+        wp_enqueue_style('ats-admin', ATS_PLUGIN_URL . 'assets/css/admin.css', array(), ATS_VERSION);
+        wp_enqueue_script('ats-admin', ATS_PLUGIN_URL . 'assets/js/admin.js', array('jquery'), ATS_VERSION, true);
+        
+        // Chart.js for statistics
+        if ($hook === 'threads_page_ats-statistics') {
+            wp_enqueue_script('chart-js', 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js', array(), '3.9.1', true);
+        }
+        
+        wp_localize_script('ats-admin', 'atsAdmin', array(
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('ats_admin_nonce'),
+            'strings' => array(
+                'confirm_delete' => __('Are you sure you want to delete this?', 'advanced-threads'),
+                'processing' => __('Processing...', 'advanced-threads'),
+                'success' => __('Success!', 'advanced-threads'),
+                'error' => __('An error occurred', 'advanced-threads')
+            )
+        ));
+    }
+    
+    /**
+     * Admin notices
+     */
+    public function admin_notices() {
+        // Check if database needs update
+        if ($this->needs_database_update()) {
+            ?>
+            <div class="notice notice-warning">
+                <p>
+                    <?php _e('Advanced Threads System database needs to be updated.', 'advanced-threads'); ?>
+                    <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=ats-tools&action=update_db'), 'ats_update_db'); ?>" 
+                       class="button button-primary">
+                        <?php _e('Update Now', 'advanced-threads'); ?>
+                    </a>
+                </p>
+            </div>
+            <?php
+        }
+        
+        // Show pending moderation notice
+        $pending_count = $this->get_pending_content_count();
+        if ($pending_count > 0 && current_user_can('moderate_comments')) {
+            ?>
+            <div class="notice notice-info">
+                <p>
+                    <?php printf(
+                        _n(
+                            'There is %d thread awaiting moderation.',
+                            'There are %d threads awaiting moderation.',
+                            $pending_count,
+                            'advanced-threads'
+                        ),
+                        $pending_count
+                    ); ?>
+                    <a href="<?php echo admin_url('admin.php?page=ats-moderation'); ?>" class="button">
+                        <?php _e('Review Now', 'advanced-threads'); ?>
+                    </a>
+                </p>
+            </div>
+            <?php
+        }
+    }
+    
+    // Helper methods for rendering settings tabs
+    
+    private function render_general_settings() {
+        ?>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><?php _e('Threads per page', 'advanced-threads'); ?></th>
+                <td>
+                    <input type="number" name="ats_threads_per_page" 
+                           value="<?php echo esc_attr(get_option('ats_threads_per_page', 20)); ?>" 
+                           min="1" max="100">
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Replies per page', 'advanced-threads'); ?></th>
+                <td>
+                    <input type="number" name="ats_replies_per_page" 
+                           value="<?php echo esc_attr(get_option('ats_replies_per_page', 50)); ?>" 
+                           min="1" max="200">
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Enable voting system', 'advanced-threads'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="ats_enable_voting" value="1" 
+                               <?php checked(get_option('ats_enable_voting', 1)); ?>>
+                        <?php _e('Allow users to upvote and downvote content', 'advanced-threads'); ?>
+                    </label>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Enable following system', 'advanced-threads'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="ats_enable_following" value="1" 
+                               <?php checked(get_option('ats_enable_following', 1)); ?>>
+                        <?php _e('Allow users to follow other users and threads', 'advanced-threads'); ?>
+                    </label>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Enable notifications', 'advanced-threads'); ?></th>
+                <td>
+                    <label>
+                        <input type="checkbox" name="ats_enable_notifications" value="1" 
+                               <?php checked(get_option('ats_enable_notifications', 1)); ?>>
+                        <?php _e('Send notifications for various activities', 'advanced-threads'); ?>
+                    </label>
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
+    
+    private function render_permission_settings() {
+        ?>
+        <table class="form-table">
+            <tr>
+                <th scope="row"><?php _e('Who can create threads', 'advanced-threads'); ?></th>
+                <td>
+                    <select name="ats_who_can_create_threads">
+                        <option value="subscriber" <?php selected(get_option('ats_who_can_create_threads'), 'subscriber'); ?>>
+                            <?php _e('Subscriber and above', 'advanced-threads'); ?>
+                        </option>
+                        <option value="contributor" <?php selected(get_option('ats_who_can_create_threads'), 'contributor'); ?>>
+                            <?php _e('Contributor and above', 'advanced-threads'); ?>
+                        </option>
+                        <option value="author" <?php selected(get_option('ats_who_can_create_threads'), 'author'); ?>>
+                            <?php _e('Author and above', 'advanced-threads'); ?>
+                        </option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Who can reply', 'advanced-threads'); ?></th>
+                <td>
+                    <select name="ats_who_can_reply">
+                        <option value="subscriber" <?php selected(get_option('ats_who_can_reply'), 'subscriber'); ?>>
+                            <?php _e('Subscriber and above', 'advanced-threads'); ?>
+                        </option>
+                        <option value="contributor" <?php selected(get_option('ats_who_can_reply'), 'contributor'); ?>>
+                            <?php _e('Contributor and above', 'advanced-threads'); ?>
+                        </option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th scope="row"><?php _e('Who can vote', 'advanced-threads'); ?></th>
+                <td>
+                    <select name="ats_who_can_vote">
+                        <option value="subscriber" <?php selected(get_option('ats_who_can_<?php
+/**
+ * Advanced Threads System - Admin
+ * 
+ * @package AdvancedThreadsSystem
+ * @subpackage Admin
+ */
+
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class ATS_Admin {
+    
+    private static $instance = null;
+    private $thread_manager;
+    private $user_manager;
+    private $vote_manager;
+    
+    public static function get_instance() {
+        if (null === self::$instance) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+    
+    private function __construct() {
+        $this->thread_manager = new ATS_Thread_Manager();
+        $this->user_manager = new ATS_User_Manager();
+        $this->vote_manager = new ATS_Vote_Manager();
+        
+        $this->init_hooks();
+    }
+    
+    private function init_hooks() {
+        // Admin menu
+        add_action('admin_menu', array($this, 'add_admin_menu'));
+        add_action('admin_init', array($this, 'admin_init'));
+        
+        // Dashboard widgets
+        add_action('wp_dashboard_setup', array($this, 'add_dashboard_widgets'));
+        
+        // Admin notices
+        add_action('admin_notices', array($this, 'admin_notices'));
+        
+        // Admin styles and scripts
+        add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
+        
+        // Ajax handlers
+        add_action('wp_ajax_ats_admin_action

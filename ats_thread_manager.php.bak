@@ -1,0 +1,1172 @@
+<?php
+/**
+ * Advanced Threads System - Thread Manager
+ * 
+ * @package AdvancedThreadsSystem
+ * @subpackage ThreadManager
+ */
+
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class ATS_Thread_Manager {
+    
+    private $wpdb;
+    private $threads_table;
+    private $replies_table;
+    private $votes_table;
+    private $profiles_table;
+    
+    public function __construct() {
+        global $wpdb;
+        $this->wpdb = $wpdb;
+        $this->threads_table = $wpdb->prefix . 'ats_threads';
+        $this->replies_table = $wpdb->prefix . 'ats_replies';
+        $this->votes_table = $wpdb->prefix . 'ats_votes';
+        $this->profiles_table = $wpdb->prefix . 'ats_user_profiles';
+    }
+    
+    /**
+     * Create a new thread
+     *
+     * @param array $data Thread data
+     * @return int|false Thread ID on success, false on failure
+     */
+    public function create_thread($data) {
+        // Validate required data
+        if (empty($data['title']) || empty($data['content']) || empty($data['author_id'])) {
+            return false;
+        }
+        
+        // Sanitize data
+        $thread_data = array(
+            'title' => sanitize_text_field($data['title']),
+            'content' => ats_sanitize_content($data['content']),
+            'author_id' => intval($data['author_id']),
+            'excerpt' => isset($data['excerpt']) ? sanitize_text_field($data['excerpt']) : ats_get_excerpt($data['content']),
+            'category' => isset($data['category']) ? sanitize_text_field($data['category']) : '',
+            'featured_image' => isset($data['featured_image']) ? esc_url_raw($data['featured_image']) : '',
+            'tags' => isset($data['tags']) ? sanitize_text_field($data['tags']) : '',
+            'status' => isset($data['status']) ? sanitize_text_field($data['status']) : 'published'
+        );
+        
+        // Check for blocked words
+        if (ats_contains_blocked_words($thread_data['title'] . ' ' . $thread_data['content'])) {
+            if (ats_get_option('auto_moderate_blocked_words', true)) {
+                $thread_data['status'] = 'pending';
+            }
+        }
+        
+        // Check user permissions
+        if (!ats_user_can('create_thread', $thread_data['author_id'])) {
+            return false;
+        }
+        
+        // Check if approval is required
+        if (ats_get_option('require_approval', false) && !current_user_can('moderate_comments')) {
+            $thread_data['status'] = 'pending';
+        }
+        
+        // Create WordPress post first
+        $post_data = array(
+            'post_title' => $thread_data['title'],
+            'post_content' => $thread_data['content'],
+            'post_excerpt' => $thread_data['excerpt'],
+            'post_status' => $thread_data['status'] === 'published' ? 'publish' : 'pending',
+            'post_type' => 'ats_thread',
+            'post_author' => $thread_data['author_id'],
+            'comment_status' => 'open',
+            'ping_status' => 'closed'
+        );
+        
+        $post_id = wp_insert_post($post_data, true);
+        
+        if (is_wp_error($post_id)) {
+            return false;
+        }
+        
+        // Set featured image if provided
+        if ($thread_data['featured_image']) {
+            $attachment_id = attachment_url_to_postid($thread_data['featured_image']);
+            if ($attachment_id) {
+                set_post_thumbnail($post_id, $attachment_id);
+            }
+        }
+        
+        // Set category and tags
+        if ($thread_data['category']) {
+            wp_set_object_terms($post_id, $thread_data['category'], 'ats_thread_category');
+        }
+        
+        if ($thread_data['tags']) {
+            $tags = array_map('trim', explode(',', $thread_data['tags']));
+            wp_set_object_terms($post_id, $tags, 'ats_thread_tag');
+        }
+        
+        // Insert into custom table
+        $thread_data['post_id'] = $post_id;
+        $thread_data['created_at'] = current_time('mysql');
+        $thread_data['last_activity'] = current_time('mysql');
+        
+        $result = $this->wpdb->insert(
+            $this->threads_table,
+            $thread_data,
+            array('%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')
+        );
+        
+        if (!$result) {
+            // Clean up if insert failed
+            wp_delete_post($post_id, true);
+            return false;
+        }
+        
+        $thread_id = $this->wpdb->insert_id;
+        
+        // Update user thread count
+        $this->update_user_thread_count($thread_data['author_id']);
+        
+        // Award points for creating thread
+        $this->award_reputation_points($thread_data['author_id'], 'create_thread');
+        
+        // Send notifications to followers
+        $this->notify_user_followers($thread_data['author_id'], 'new_thread', $thread_id);
+        
+        // Log activity
+        ats_log('Thread created', 'info', array(
+            'thread_id' => $thread_id,
+            'post_id' => $post_id,
+            'author_id' => $thread_data['author_id'],
+            'title' => $thread_data['title']
+        ));
+        
+        // Trigger action hook
+        do_action('ats_thread_created', $thread_id, $post_id, $thread_data);
+        
+        return $thread_id;
+    }
+    
+    /**
+     * Get thread by ID
+     *
+     * @param int $thread_id Thread ID
+     * @param bool $include_user_data Include user data
+     * @return object|null Thread object
+     */
+    public function get_thread_by_id($thread_id, $include_user_data = true) {
+        $sql = "SELECT t.*, 
+                       p.post_name as post_slug,
+                       p.post_status as wp_status";
+        
+        if ($include_user_data) {
+            $sql .= ", u.display_name as author_name,
+                       u.user_email as author_email,
+                       up.avatar as author_avatar,
+                       up.badge as author_badge,
+                       up.reputation as author_reputation,
+                       up.threads_count as author_threads,
+                       up.replies_count as author_replies,
+                       up.followers_count as author_followers";
+        }
+        
+        $sql .= " FROM {$this->threads_table} t
+                  LEFT JOIN {$this->wpdb->posts} p ON t.post_id = p.ID";
+        
+        if ($include_user_data) {
+            $sql .= " LEFT JOIN {$this->wpdb->users} u ON t.author_id = u.ID
+                      LEFT JOIN {$this->profiles_table} up ON t.author_id = up.user_id";
+        }
+        
+        $sql .= " WHERE t.id = %d";
+        
+        $thread = $this->wpdb->get_row($this->wpdb->prepare($sql, $thread_id));
+        
+        if (!$thread) {
+            return null;
+        }
+        
+        // Get user vote if logged in
+        if (is_user_logged_in() && $include_user_data) {
+            $user_vote = $this->wpdb->get_var($this->wpdb->prepare(
+                "SELECT vote_type FROM {$this->votes_table} 
+                 WHERE user_id = %d AND thread_id = %d",
+                get_current_user_id(),
+                $thread_id
+            ));
+            $thread->user_vote = $user_vote;
+        }
+        
+        // Get thread URL
+        $thread->url = get_permalink($thread->post_id);
+        
+        // Apply filters
+        $thread = apply_filters('ats_get_thread', $thread, $thread_id);
+        
+        return $thread;
+    }
+    
+    /**
+     * Get thread by post ID
+     *
+     * @param int $post_id Post ID
+     * @param bool $include_user_data Include user data
+     * @return object|null Thread object
+     */
+    public function get_thread_by_post_id($post_id, $include_user_data = true) {
+        $thread_id = $this->wpdb->get_var($this->wpdb->prepare(
+            "SELECT id FROM {$this->threads_table} WHERE post_id = %d",
+            $post_id
+        ));
+        
+        if (!$thread_id) {
+            return null;
+        }
+        
+        return $this->get_thread_by_id($thread_id, $include_user_data);
+    }
+    
+    /**
+     * Get threads with pagination and filtering
+     *
+     * @param array $args Query arguments
+     * @return array Array of threads
+     */
+    public function get_threads($args = array()) {
+        $defaults = array(
+            'limit' => ats_get_option('threads_per_page', 20),
+            'offset' => 0,
+            'category' => '',
+            'tag' => '',
+            'author_id' => '',
+            'search' => '',
+            'order_by' => 'last_activity',
+            'order' => 'DESC',
+            'status' => 'published',
+            'pinned_first' => true,
+            'include_user_data' => true
+        );
+        
+        $args = wp_parse_args($args, $defaults);
+        
+        // Build SELECT clause
+        $select = "t.*, p.post_name as post_slug, p.post_status as wp_status";
+        
+        if ($args['include_user_data']) {
+            $select .= ", u.display_name as author_name,
+                          up.avatar as author_avatar,
+                          up.badge as author_badge,
+                          up.reputation as author_reputation";
+        }
+        
+        // Build FROM clause
+        $from = "{$this->threads_table} t 
+                 LEFT JOIN {$this->wpdb->posts} p ON t.post_id = p.ID";
+        
+        if ($args['include_user_data']) {
+            $from .= " LEFT JOIN {$this->wpdb->users} u ON t.author_id = u.ID
+                       LEFT JOIN {$this->profiles_table} up ON t.author_id = up.user_id";
+        }
+        
+        // Build WHERE clause
+        $where_conditions = array("t.status = %s");
+        $where_values = array($args['status']);
+        
+        if (!empty($args['category'])) {
+            $where_conditions[] = "t.category = %s";
+            $where_values[] = $args['category'];
+        }
+        
+        if (!empty($args['tag'])) {
+            $where_conditions[] = "FIND_IN_SET(%s, t.tags)";
+            $where_values[] = $args['tag'];
+        }
+        
+        if (!empty($args['author_id'])) {
+            $where_conditions[] = "t.author_id = %d";
+            $where_values[] = intval($args['author_id']);
+        }
+        
+        if (!empty($args['search'])) {
+            $where_conditions[] = "(t.title LIKE %s OR t.content LIKE %s)";
+            $search_term = '%' . $this->wpdb->esc_like($args['search']) . '%';
+            $where_values[] = $search_term;
+            $where_values[] = $search_term;
+        }
+        
+        $where_clause = implode(' AND ', $where_conditions);
+        
+        // Build ORDER BY clause
+        $order_by = $this->get_order_by_clause($args['order_by'], $args['order'], $args['pinned_first']);
+        
+        // Build final query
+        $sql = "SELECT {$select} 
+                FROM {$from} 
+                WHERE {$where_clause} 
+                {$order_by}
+                LIMIT %d
+        ;
+$limit = absint($limit);
+$sql = $this->wpdb->prepare($sql, $limit);
+$results = $this->wpdb->get_results($sql);
+return $results ? $results : array();
+    }
+ OFFSET %d";
+        
+        $where_values[] = intval($args['limit']);
+        $where_values[] = intval($args['offset']);
+        
+        $prepared_sql = $this->wpdb->prepare($sql, $where_values);
+        $threads = $this->wpdb->get_results($prepared_sql);
+        
+        // Add additional data to each thread
+        if ($threads && is_user_logged_in()) {
+            $thread_ids = wp_list_pluck($threads, 'id');
+            $user_votes = $this->get_user_votes_for_threads(get_current_user_id(), $thread_ids);
+            
+            foreach ($threads as $thread) {
+                $thread->user_vote = isset($user_votes[$thread->id]) ? $user_votes[$thread->id] : null;
+                $thread->url = get_permalink($thread->post_id);
+            }
+        }
+        
+        // Apply filters
+        $threads = apply_filters('ats_get_threads', $threads, $args);
+        
+        return $threads;
+    }
+    
+    /**
+     * Get total thread count
+     *
+     * @param array $args Query arguments
+     * @return int Total count
+     */
+    public function get_thread_count($args = array()) {
+        $defaults = array(
+            'category' => '',
+            'tag' => '',
+            'author_id' => '',
+            'search' => '',
+            'status' => 'published'
+        );
+        
+        $args = wp_parse_args($args, $defaults);
+        
+        $where_conditions = array("status = %s");
+        $where_values = array($args['status']);
+        
+        if (!empty($args['category'])) {
+            $where_conditions[] = "category = %s";
+            $where_values[] = $args['category'];
+        }
+        
+        if (!empty($args['tag'])) {
+            $where_conditions[] = "FIND_IN_SET(%s, tags)";
+            $where_values[] = $args['tag'];
+        }
+        
+        if (!empty($args['author_id'])) {
+            $where_conditions[] = "author_id = %d";
+            $where_values[] = intval($args['author_id']);
+        }
+        
+        if (!empty($args['search'])) {
+            $where_conditions[] = "(title LIKE %s OR content LIKE %s)";
+            $search_term = '%' . $this->wpdb->esc_like($args['search']) . '%';
+            $where_values[] = $search_term;
+            $where_values[] = $search_term;
+        }
+        
+        $where_clause = implode(' AND ', $where_conditions);
+        
+        $sql = "SELECT COUNT(*) FROM {$this->threads_table} WHERE {$where_clause}";
+        
+        return intval($this->wpdb->get_var($this->wpdb->prepare($sql, $where_values)));
+    }
+    
+    /**
+     * Update thread
+     *
+     * @param int $thread_id Thread ID
+     * @param array $data Update data
+     * @return bool Success status
+     */
+    public function update_thread($thread_id, $data) {
+        $thread = $this->get_thread_by_id($thread_id, false);
+        if (!$thread) {
+            return false;
+        }
+        
+        // Check permissions
+        if (!current_user_can('edit_post', $thread->post_id) && 
+            !ats_user_can('edit_any_thread') && 
+            get_current_user_id() !== $thread->author_id) {
+            return false;
+        }
+        
+        $update_data = array();
+        $update_format = array();
+        
+        // Sanitize and prepare update data
+        if (isset($data['title'])) {
+            $update_data['title'] = sanitize_text_field($data['title']);
+            $update_format[] = '%s';
+        }
+        
+        if (isset($data['content'])) {
+            $update_data['content'] = ats_sanitize_content($data['content']);
+            $update_format[] = '%s';
+        }
+        
+        if (isset($data['excerpt'])) {
+            $update_data['excerpt'] = sanitize_text_field($data['excerpt']);
+            $update_format[] = '%s';
+        }
+        
+        if (isset($data['category'])) {
+            $update_data['category'] = sanitize_text_field($data['category']);
+            $update_format[] = '%s';
+        }
+        
+        if (isset($data['tags'])) {
+            $update_data['tags'] = sanitize_text_field($data['tags']);
+            $update_format[] = '%s';
+        }
+        
+        if (isset($data['featured_image'])) {
+            $update_data['featured_image'] = esc_url_raw($data['featured_image']);
+            $update_format[] = '%s';
+        }
+        
+        if (isset($data['status']) && current_user_can('moderate_comments')) {
+            $update_data['status'] = sanitize_text_field($data['status']);
+            $update_format[] = '%s';
+        }
+        
+        if (isset($data['is_pinned']) && current_user_can('moderate_comments')) {
+            $update_data['is_pinned'] = intval($data['is_pinned']);
+            $update_format[] = '%d';
+        }
+        
+        if (isset($data['is_locked']) && current_user_can('moderate_comments')) {
+            $update_data['is_locked'] = intval($data['is_locked']);
+            $update_format[] = '%d';
+        }
+        
+        if (empty($update_data)) {
+            return false;
+        }
+        
+        $update_data['updated_at'] = current_time('mysql');
+        $update_format[] = '%s';
+        
+        // Update custom table
+        $result = $this->wpdb->update(
+            $this->threads_table,
+            $update_data,
+            array('id' => $thread_id),
+            $update_format,
+            array('%d')
+        );
+        
+        if ($result === false) {
+            return false;
+        }
+        
+        // Update WordPress post if needed
+        $post_update_data = array('ID' => $thread->post_id);
+        
+        if (isset($data['title'])) {
+            $post_update_data['post_title'] = $update_data['title'];
+        }
+        
+        if (isset($data['content'])) {
+            $post_update_data['post_content'] = $update_data['content'];
+        }
+        
+        if (isset($data['excerpt'])) {
+            $post_update_data['post_excerpt'] = $update_data['excerpt'];
+        }
+        
+        if (count($post_update_data) > 1) {
+            wp_update_post($post_update_data);
+        }
+        
+        // Update taxonomies
+        if (isset($data['category'])) {
+            wp_set_object_terms($thread->post_id, $data['category'], 'ats_thread_category');
+        }
+        
+        if (isset($data['tags'])) {
+            $tags = array_map('trim', explode(',', $data['tags']));
+            wp_set_object_terms($thread->post_id, $tags, 'ats_thread_tag');
+        }
+        
+        // Log activity
+        ats_log('Thread updated', 'info', array(
+            'thread_id' => $thread_id,
+            'updated_fields' => array_keys($update_data)
+        ));
+        
+        // Trigger action hook
+        do_action('ats_thread_updated', $thread_id, $update_data);
+        
+        return true;
+    }
+    
+    /**
+     * Delete thread
+     *
+     * @param int $thread_id Thread ID
+     * @param bool $force_delete Force delete (bypass trash)
+     * @return bool Success status
+     */
+    public function delete_thread($thread_id, $force_delete = false) {
+        $thread = $this->get_thread_by_id($thread_id, false);
+        if (!$thread) {
+            return false;
+        }
+        
+        // Check permissions
+        if (!current_user_can('delete_post', $thread->post_id) && 
+            !ats_user_can('edit_any_thread') && 
+            get_current_user_id() !== $thread->author_id) {
+            return false;
+        }
+        
+        // Delete WordPress post
+        $post_deleted = wp_delete_post($thread->post_id, $force_delete);
+        if (!$post_deleted) {
+            return false;
+        }
+        
+        if ($force_delete) {
+            // Delete from custom table
+            $this->wpdb->delete(
+                $this->threads_table,
+                array('id' => $thread_id),
+                array('%d')
+            );
+            
+            // Delete all replies
+            $this->wpdb->delete(
+                $this->replies_table,
+                array('thread_id' => $thread_id),
+                array('%d')
+            );
+            
+            // Delete all votes
+            $this->wpdb->delete(
+                $this->votes_table,
+                array('thread_id' => $thread_id),
+                array('%d')
+            );
+            
+            // Delete follows
+            $follows_table = $this->wpdb->prefix . 'ats_follows';
+            $this->wpdb->delete(
+                $follows_table,
+                array(
+                    'following_id' => $thread_id,
+                    'following_type' => 'thread'
+                ),
+                array('%d', '%s')
+            );
+            
+            // Delete notifications
+            $notifications_table = $this->wpdb->prefix . 'ats_notifications';
+            $this->wpdb->delete(
+                $notifications_table,
+                array(
+                    'related_id' => $thread_id,
+                    'related_type' => 'thread'
+                ),
+                array('%d', '%s')
+            );
+        } else {
+            // Mark as deleted in custom table
+            $this->wpdb->update(
+                $this->threads_table,
+                array('status' => 'trash', 'updated_at' => current_time('mysql')),
+                array('id' => $thread_id),
+                array('%s', '%s'),
+                array('%d')
+            );
+        }
+        
+        // Update user thread count
+        $this->update_user_thread_count($thread->author_id);
+        
+        // Log activity
+        ats_log('Thread deleted', 'info', array(
+            'thread_id' => $thread_id,
+            'post_id' => $thread->post_id,
+            'force_delete' => $force_delete
+        ));
+        
+        // Trigger action hook
+        do_action('ats_thread_deleted', $thread_id, $force_delete);
+        
+        return true;
+    }
+    
+    /**
+     * Increment thread view count
+     *
+     * @param int $thread_id Thread ID
+     * @param int $user_id User ID (optional)
+     * @return bool Success status
+     */
+    public function increment_view_count($thread_id, $user_id = null) {
+        // Check if already viewed recently (avoid spam)
+        $views_table = $this->wpdb->prefix . 'ats_thread_views';
+        $ip_address = $_SERVER['REMOTE_ADDR'] ?? '';
+        
+        $recent_view = $this->wpdb->get_var($this->wpdb->prepare(
+            "SELECT id FROM {$views_table} 
+             WHERE thread_id = %d 
+             AND (user_id = %d OR ip_address = %s) 
+             AND viewed_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)",
+            $thread_id,
+            $user_id ?: 0,
+            $ip_address
+        ));
+        
+        if ($recent_view) {
+            return false; // Already viewed recently
+        }
+        
+        // Record view
+        $this->wpdb->insert(
+            $views_table,
+            array(
+                'thread_id' => $thread_id,
+                'user_id' => $user_id,
+                'ip_address' => $ip_address,
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
+                'viewed_at' => current_time('mysql')
+            ),
+            array('%d', '%d', '%s', '%s', '%s')
+        );
+        
+        // Increment counter in threads table
+        $this->wpdb->query($this->wpdb->prepare(
+            "UPDATE {$this->threads_table} SET view_count = view_count + 1 WHERE id = %d",
+            $thread_id
+        ));
+        
+        return true;
+    }
+    
+    /**
+     * Get popular threads
+     *
+     * @param int $limit Number of threads to return
+     * @param string $timeframe Time period ('day', 'week', 'month', 'all')
+     * @return array Popular threads
+     */
+    public function get_popular_threads($limit = 10, $timeframe = 'week') {
+        $date_condition = '';
+        switch ($timeframe) {
+            case 'day':
+                $date_condition = "AND t.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)";
+                break;
+            case 'week':
+                $date_condition = "AND t.created_at >= DATE_SUB(NOW(), INTERVAL 1 WEEK)";
+                break;
+            case 'month':
+                $date_condition = "AND t.created_at >= DATE_SUB(NOW(), INTERVAL 1 MONTH)";
+                break;
+        }
+        
+        $sql = "SELECT t.*, 
+                       u.display_name as author_name,
+                       up.avatar as author_avatar,
+                       (t.upvotes - t.downvotes + t.reply_count * 2 + t.view_count * 0.1) as popularity_score
+                FROM {$this->threads_table} t
+                LEFT JOIN {$this->wpdb->users} u ON t.author_id = u.ID
+                LEFT JOIN {$this->profiles_table} up ON t.author_id = up.user_id
+                WHERE t.status = 'published' {$date_condition}
+                ORDER BY popularity_score DESC
+                LIMIT %d";
+        
+        return $this->wpdb->get_results($this->wpdb->prepare($sql, $limit));
+    }
+    
+    /**
+     * Search threads
+     *
+     * @param string $search_term Search term
+     * @param array $args Additional arguments
+     * @return array Search results
+     */
+    public function search_threads($search_term, $args = array()) {
+        $defaults = array(
+            'limit' => ats_get_option('threads_per_page', 20),
+            'offset' => 0,
+            'category' => '',
+            'order_by' => 'relevance'
+        );
+        
+        $args = wp_parse_args($args, $defaults);
+        
+        $search_term = $this->wpdb->esc_like($search_term);
+        
+        // Use MATCH AGAINST for full-text search if available
+        $relevance_score = "MATCH(t.title, t.content) AGAINST('%{$search_term}%' IN BOOLEAN MODE)";
+        
+        $sql = "SELECT t.*, 
+                       u.display_name as author_name,
+                       up.avatar as author_avatar,
+                       {$relevance_score} as relevance_score
+                FROM {$this->threads_table} t
+                LEFT JOIN {$this->wpdb->users} u ON t.author_id = u.ID
+                LEFT JOIN {$this->profiles_table} up ON t.author_id = up.user_id
+                WHERE t.status = 'published'
+                AND (t.title LIKE %s OR t.content LIKE %s OR t.tags LIKE %s)";
+        
+        $where_values = array(
+            '%' . $search_term . '%',
+            '%' . $search_term . '%',
+            '%' . $search_term . '%'
+        );
+        
+        if (!empty($args['category'])) {
+            $sql .= " AND t.category = %s";
+            $where_values[] = $args['category'];
+        }
+        
+        if ($args['order_by'] === 'relevance') {
+            $sql .= " ORDER BY relevance_score DESC, t.upvotes DESC";
+        } else {
+            $sql .= " ORDER BY t.last_activity DESC";
+        }
+        
+        $sql .= " LIMIT %d OFFSET %d";
+        $where_values[] = intval($args['limit']);
+        $where_values[] = intval($args['offset']);
+        
+        return $this->wpdb->get_results($this->wpdb->prepare($sql, $where_values));
+    }
+    
+    /**
+     * Get user votes for multiple threads
+     *
+     * @param int $user_id User ID
+     * @param array $thread_ids Thread IDs
+     * @return array User votes indexed by thread ID
+     */
+    private function get_user_votes_for_threads($user_id, $thread_ids) {
+        if (empty($thread_ids)) {
+            return array();
+        }
+        
+        $placeholders = implode(',', array_fill(0, count($thread_ids), '%d'));
+        $sql = "SELECT thread_id, vote_type 
+                FROM {$this->votes_table} 
+                WHERE user_id = %d AND thread_id IN ($placeholders)";
+        
+        $values = array_merge(array($user_id), $thread_ids);
+        $results = $this->wpdb->get_results($this->wpdb->prepare($sql, $values));
+        
+        $votes = array();
+        foreach ($results as $vote) {
+            $votes[$vote->thread_id] = $vote->vote_type;
+        }
+        
+        return $votes;
+    }
+    
+    /**
+     * Get ORDER BY clause for thread queries
+     *
+     * @param string $order_by Order by field
+     * @param string $order Order direction
+     * @param bool $pinned_first Show pinned threads first
+     * @return string ORDER BY clause
+     */
+    private function get_order_by_clause($order_by, $order = 'DESC', $pinned_first = true) {
+        $valid_order_by = array(
+            'created_at' => 't.created_at',
+            'updated_at' => 't.updated_at',
+            'last_activity' => 't.last_activity',
+            'title' => 't.title',
+            'author' => 'u.display_name',
+            'replies' => 't.reply_count',
+            'votes' => '(t.upvotes - t.downvotes)',
+            'views' => 't.view_count',
+            'popularity' => '(t.upvotes - t.downvotes + t.reply_count * 2 + t.view_count * 0.1)'
+        );
+        
+        if (!isset($valid_order_by[$order_by])) {
+            $order_by = 'last_activity';
+        }
+        
+        $order = strtoupper($order) === 'ASC' ? 'ASC' : 'DESC';
+        
+        $order_clause = "ORDER BY ";
+        
+        if ($pinned_first) {
+            $order_clause .= "t.is_pinned DESC, ";
+        }
+        
+        $order_clause .= $valid_order_by[$order_by] . " " . $order;
+        
+        return $order_clause;
+    }
+    
+    /**
+     * Update user thread count
+     *
+     * @param int $user_id User ID
+     */
+    private function update_user_thread_count($user_id) {
+        $count = $this->wpdb->get_var($this->wpdb->prepare(
+            "SELECT COUNT(*) FROM {$this->threads_table} WHERE author_id = %d AND status = 'published'",
+            $user_id
+        ));
+        
+        $this->wpdb->query($this->wpdb->prepare(
+            "INSERT INTO {$this->profiles_table} (user_id, threads_count, updated_at) 
+             VALUES (%d, %d, %s)
+             ON DUPLICATE KEY UPDATE 
+             threads_count = %d, updated_at = %s",
+            $user_id, $count, current_time('mysql'),
+            $count, current_time('mysql')
+        ));
+    }
+    
+    /**
+     * Award reputation points to user
+     *
+     * @param int $user_id User ID
+     * @param string $action Action type
+     * @param int $custom_points Custom points (optional)
+     */
+    private function award_reputation_points($user_id, $action, $custom_points = null) {
+        $points_map = array(
+            'create_thread' => ats_get_option('points_new_thread', 10),
+            'thread_upvoted' => ats_get_option('points_upvote_received', 2),
+            'thread_downvoted' => ats_get_option('points_downvote_received', -1),
+            'thread_featured' => ats_get_option('points_thread_featured', 50)
+        );
+        
+        $points = isset($custom_points) ? $custom_points : ($points_map[$action] ?? 0);
+        
+        if ($points == 0) {
+            return;
+        }
+        
+        // Update user reputation
+        $this->wpdb->query($this->wpdb->prepare(
+            "INSERT INTO {$this->profiles_table} (user_id, reputation, updated_at) 
+             VALUES (%d, %d, %s)
+             ON DUPLICATE KEY UPDATE 
+             reputation = reputation + %d, updated_at = %s",
+            $user_id, $points, current_time('mysql'),
+            $points, current_time('mysql')
+        ));
+        
+        // Log reputation change
+        ats_log('Reputation awarded', 'info', array(
+            'user_id' => $user_id,
+            'action' => $action,
+            'points' => $points
+        ));
+        
+        // Trigger action hook
+        do_action('ats_reputation_awarded', $user_id, $action, $points);
+    }
+    
+    /**
+     * Notify user followers about new thread
+     *
+     * @param int $author_id Thread author ID
+     * @param string $type Notification type
+     * @param int $thread_id Thread ID
+     */
+    private function notify_user_followers($author_id, $type, $thread_id) {
+        $follows_table = $this->wpdb->prefix . 'ats_follows';
+        
+        // Get followers
+        $followers = $this->wpdb->get_col($this->wpdb->prepare(
+            "SELECT follower_id FROM {$follows_table} 
+             WHERE following_id = %d AND following_type = 'user' AND notifications = 1",
+            $author_id
+        ));
+        
+        if (empty($followers)) {
+            return;
+        }
+        
+        $thread = $this->get_thread_by_id($thread_id, false);
+        if (!$thread) {
+            return;
+        }
+        
+        $author = get_userdata($author_id);
+        if (!$author) {
+            return;
+        }
+        
+        foreach ($followers as $follower_id) {
+            ats_send_notification(
+                $follower_id,
+                $type,
+                sprintf(__('%s posted a new thread', 'advanced-threads'), $author->display_name),
+                sprintf(__('%s posted: "%s"', 'advanced-threads'), $author->display_name, $thread->title),
+                ats_get_thread_url($thread->post_id),
+                $thread_id,
+                'thread'
+            );
+        }
+    }
+    
+    /**
+     * Get thread statistics
+     *
+     * @param int $thread_id Thread ID (optional, for specific thread)
+     * @return array Thread statistics
+     */
+    public function get_thread_statistics($thread_id = null) {
+        $stats = array();
+        
+        if ($thread_id) {
+            // Statistics for specific thread
+            $thread_stats = $this->wpdb->get_row($this->wpdb->prepare(
+                "SELECT reply_count, upvotes, downvotes, view_count, 
+                        DATEDIFF(NOW(), created_at) as days_old
+                 FROM {$this->threads_table} WHERE id = %d",
+                $thread_id
+            ));
+            
+            if ($thread_stats) {
+                $stats = array(
+                    'replies' => intval($thread_stats->reply_count),
+                    'upvotes' => intval($thread_stats->upvotes),
+                    'downvotes' => intval($thread_stats->downvotes),
+                    'net_votes' => intval($thread_stats->upvotes) - intval($thread_stats->downvotes),
+                    'views' => intval($thread_stats->view_count),
+                    'days_old' => intval($thread_stats->days_old),
+                    'engagement_rate' => $this->calculate_engagement_rate($thread_stats)
+                );
+            }
+        } else {
+            // Overall statistics
+            $overall_stats = $this->wpdb->get_row(
+                "SELECT 
+                    COUNT(*) as total_threads,
+                    COUNT(CASE WHEN status = 'published' THEN 1 END) as published_threads,
+                    COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_threads,
+                    AVG(reply_count) as avg_replies,
+                    AVG(upvotes) as avg_upvotes,
+                    AVG(view_count) as avg_views,
+                    MAX(created_at) as latest_thread,
+                    SUM(reply_count) as total_replies,
+                    SUM(upvotes) as total_upvotes,
+                    SUM(view_count) as total_views
+                 FROM {$this->threads_table}"
+            );
+            
+            if ($overall_stats) {
+                $stats = array(
+                    'total_threads' => intval($overall_stats->total_threads),
+                    'published_threads' => intval($overall_stats->published_threads),
+                    'pending_threads' => intval($overall_stats->pending_threads),
+                    'avg_replies' => round(floatval($overall_stats->avg_replies), 2),
+                    'avg_upvotes' => round(floatval($overall_stats->avg_upvotes), 2),
+                    'avg_views' => round(floatval($overall_stats->avg_views), 2),
+                    'total_replies' => intval($overall_stats->total_replies),
+                    'total_upvotes' => intval($overall_stats->total_upvotes),
+                    'total_views' => intval($overall_stats->total_views),
+                    'latest_thread' => $overall_stats->latest_thread
+                );
+            }
+        }
+        
+        return apply_filters('ats_thread_statistics', $stats, $thread_id);
+    }
+    
+    /**
+     * Calculate engagement rate for a thread
+     *
+     * @param object $thread_stats Thread statistics
+     * @return float Engagement rate
+     */
+    private function calculate_engagement_rate($thread_stats) {
+        $views = intval($thread_stats->view_count);
+        if ($views == 0) {
+            return 0;
+        }
+        
+        $interactions = intval($thread_stats->reply_count) + 
+                       intval($thread_stats->upvotes) + 
+                       intval($thread_stats->downvotes);
+        
+        return round(($interactions / $views) * 100, 2);
+    }
+    
+    /**
+     * Pin/unpin thread
+     *
+     * @param int $thread_id Thread ID
+     * @param bool $pinned Pin status
+     * @return bool Success status
+     */
+    public function set_thread_pinned($thread_id, $pinned = true) {
+        if (!current_user_can('moderate_comments')) {
+            return false;
+        }
+        
+        $result = $this->wpdb->update(
+            $this->threads_table,
+            array(
+                'is_pinned' => $pinned ? 1 : 0,
+                'updated_at' => current_time('mysql')
+            ),
+            array('id' => $thread_id),
+            array('%d', '%s'),
+            array('%d')
+        );
+        
+        if ($result !== false) {
+            // Update post meta
+            $thread = $this->get_thread_by_id($thread_id, false);
+            if ($thread) {
+                update_post_meta($thread->post_id, '_ats_thread_pinned', $pinned ? 1 : 0);
+            }
+            
+            ats_log('Thread pin status changed', 'info', array(
+                'thread_id' => $thread_id,
+                'pinned' => $pinned
+            ));
+            
+            do_action('ats_thread_pin_changed', $thread_id, $pinned);
+        }
+        
+        return $result !== false;
+    }
+    
+    /**
+     * Lock/unlock thread
+     *
+     * @param int $thread_id Thread ID
+     * @param bool $locked Lock status
+     * @return bool Success status
+     */
+    public function set_thread_locked($thread_id, $locked = true) {
+        if (!current_user_can('moderate_comments')) {
+            return false;
+        }
+        
+        $result = $this->wpdb->update(
+            $this->threads_table,
+            array(
+                'is_locked' => $locked ? 1 : 0,
+                'updated_at' => current_time('mysql')
+            ),
+            array('id' => $thread_id),
+            array('%d', '%s'),
+            array('%d')
+        );
+        
+        if ($result !== false) {
+            // Update post meta
+            $thread = $this->get_thread_by_id($thread_id, false);
+            if ($thread) {
+                update_post_meta($thread->post_id, '_ats_thread_locked', $locked ? 1 : 0);
+                
+                // Update comment status
+                wp_update_post(array(
+                    'ID' => $thread->post_id,
+                    'comment_status' => $locked ? 'closed' : 'open'
+                ));
+            }
+            
+            ats_log('Thread lock status changed', 'info', array(
+                'thread_id' => $thread_id,
+                'locked' => $locked
+            ));
+            
+            do_action('ats_thread_lock_changed', $thread_id, $locked);
+        }
+        
+        return $result !== false;
+    }
+    
+    /**
+     * Update thread activity timestamp
+     *
+     * @param int $thread_id Thread ID
+     * @return bool Success status
+     */
+    public function update_thread_activity($thread_id) {
+        return $this->wpdb->update(
+            $this->threads_table,
+            array('last_activity' => current_time('mysql')),
+            array('id' => $thread_id),
+            array('%s'),
+            array('%d')
+        ) !== false;
+    }
+    
+    /**
+     * Get threads by category
+     *
+     * @param string $category_slug Category slug
+     * @param array $args Additional arguments
+     * @return array Threads in category
+     */
+    public function get_threads_by_category($category_slug, $args = array()) {
+        $args['category'] = $category_slug;
+        return $this->get_threads($args);
+    }
+    
+    /**
+     * Get threads by tag
+     *
+     * @param string $tag Tag name
+     * @param array $args Additional arguments
+     * @return array Threads with tag
+     */
+    public function get_threads_by_tag($tag, $args = array()) {
+        $args['tag'] = $tag;
+        return $this->get_threads($args);
+    }
+    
+    /**
+     * Get threads by author
+     *
+     * @param int $author_id Author ID
+     * @param array $args Additional arguments
+     * @return array Author's threads
+     */
+    public function get_threads_by_author($author_id, $args = array()) {
+        $args['author_id'] = $author_id;
+        return $this->get_threads($args);
+    }
+}
+    
+    /**
+     * Get trending threads
+     *
+     * @param int $limit Number of threads to return
+     * @return array Trending threads
+     */
+    public function get_trending_threads($limit = 10) {
+        // Threads with most activity in the last 24 hours
+        $sql = "SELECT t.*, 
+                       u.display_name as author_name,
+                       up.avatar as author_avatar,
+                       COUNT(r.id) as recent_replies
+                FROM {$this->threads_table} t
+                LEFT JOIN {$this->wpdb->users} u ON t.author_id = u.ID
+                LEFT JOIN {$this->profiles_table} up ON t.author_id = up.user_id
+                LEFT JOIN {$this->replies_table} r ON t.id = r.thread_id 
+                    AND r.created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+                WHERE t.status = 'published'
+                GROUP BY t.id
+                ORDER BY recent_replies DESC, t.last_activity DESC
+                LIMIT %d
+}

@@ -1,0 +1,171 @@
+/* Reset base */
+.ats-archive, .ats-thread-single, .ats-profile {
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  max-width: 800px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+/* Typography */
+.ats-archive h1,
+.ats-thread-single h1,
+.ats-profile h1 {
+  font-size: 1.8rem;
+  margin-bottom: 1rem;
+}
+
+/* Thread cards in archive */
+.ats-thread-list {
+  display: grid;
+  gap: 1.5rem;
+}
+.ats-thread-card {
+  border: 1px solid var(--ats-border);
+  border-radius: 8px;
+  padding: 1rem;
+  background: var(--ats-bg);
+  transition: box-shadow 0.2s ease;
+}
+.ats-thread-card:hover {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+.ats-thread-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+.ats-meta {
+  font-size: 0.85rem;
+  color: var(--ats-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Single thread */
+.ats-thread-single header {
+  margin-bottom: 1rem;
+}
+.ats-thread-body {
+  margin: 1.5rem 0;
+  font-size: 1.05rem;
+}
+.ats-thread-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+.ats-thread-actions button {
+  background: none;
+  border: 1px solid var(--ats-border);
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+}
+.ats-thread-actions .ats-score {
+  font-weight: bold;
+  min-width: 2ch;
+  text-align: center;
+}
+
+/* Replies */
+.ats-replies {
+  border-top: 1px solid var(--ats-border);
+  padding-top: 1.5rem;
+}
+.ats-replies h2 {
+  margin-bottom: 1rem;
+}
+
+/* Comments */
+.ft-comment {
+  border-bottom: 1px solid var(--ats-border);
+  padding: 1rem 0;
+}
+.ft-comment__meta {
+  font-size: 0.85rem;
+  color: var(--ats-text-muted);
+  margin-bottom: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.ft-comment__actions {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+.ft-comment__actions button {
+  background: none;
+  border: 1px solid var(--ats-border);
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+}
+.ft-score {
+  min-width: 2ch;
+  text-align: center;
+}
+
+/* User profile */
+.ats-profile header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+.ats-profile header img {
+  border-radius: 50%;
+}
+.ats-profile section {
+  margin-bottom: 2rem;
+}
+.ats-profile h2 {
+  font-size: 1.2rem;
+  margin-bottom: 0.5rem;
+}
+.ats-profile ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ats-profile li {
+  margin-bottom: 0.5rem;
+}
+
+/* Forms */
+.ats-filters {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+.ats-filters input,
+.ats-filters select,
+.ats-filters button {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--ats-border);
+  border-radius: 4px;
+}
+
+/* Dark mode */
+:root {
+  --ats-bg: #fff;
+  --ats-text: #222;
+  --ats-text-muted: #666;
+  --ats-border: #ddd;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ats-bg: #1c1c1c;
+    --ats-text: #f5f5f5;
+    --ats-text-muted: #aaa;
+    --ats-border: #333;
+  }
+}
+body {
+  background: var(--ats-bg);
+  color: var(--ats-text);
+}
